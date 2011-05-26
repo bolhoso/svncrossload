@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 
 ################################################################################
 # LICENSE
@@ -49,63 +49,82 @@
 #   ------------------------------------------------------------------------
 #   $
 
+if [ $# -lt 4 ]; then
+	echo "Usage: $0 <src repo URI> <dest repo URI> <initial revision> <final revision>"
+	exit 1;
+fi
+
+SRC=$1
+DST=$2
+REV_START=$3
+REV_END=$4
+
 echo "Checking out initial revisions"
-svn co $2 importing > /dev/null
-svn co -r 0 $1 updateme > /dev/null
+svn co $DST importing > /dev/null
+svn co -r $REV_START $SRC updateme > /dev/null
 
 echo "Getting most recent revision number"
-LATESTREVISION=$(svn info $1 | grep Revision | sed 's/^Revision: *\([0-9]*\)/\1/')
+LATESTREVISION=$(svn info $SRC | grep Revision | sed 's/^Revision: *\([0-9]*\)/\1/')
 
-for i in $(seq 1 $LATESTREVISION); do
+#for i in $(seq 1 $LATESTREVISION); do
 
-	echo -e "\nCopying revision $i"
+for i in $(seq $REV_START $REV_END); do
+  echo -e "\nCopying revision $i"
+  
+  
+  cd updateme
+  svn update -r $i | tee ../_update
+  echo -e "Imported from $SRC using svncrossload\n" > ../_log
+  # The '\-\-\-\-\...' looks ridiculous, but it works.
+  svn log -r $i | grep -v '\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-' | sed 's/\(.*\)/   |\1/'  >> ../_log
+  svn log -r $i
+  username=$(svn log -r $i | grep -v '\-\-\-\-\-\-\-' | head -n 1 | cut -d\| -f 2 | sed -e 's/^\s\+//' -e 's/\s\+$//')  
+  cd ..
 
-	cd updateme
-	svn update -r $i > ../_update
-	echo -e "Imported from $1 using svncrossload\n" > ../_log
-	# The '\-\-\-\-\...' looks ridiculous, but it works.
-	svn log -r $i | grep -v '\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-' | sed 's/\(.*\)/   |\1/'  >> ../_log
-	cd ..
+  cat _update | grep -E '^A ' | sed 's/^A *//' > _update_add
+  cat _update | grep -E '^D ' | sed 's/^D *//' > _update_del
+  cat _update | grep -E '^U ' | sed 's/^U *//' > _update_mod
 
-	cat _update | grep -E '^A' | sed 's/^A *//' > _update_add
-	cat _update | grep -E '^D' | sed 's/^D *//' > _update_del
-	cat _update | grep -E '^U' | sed 's/^U *//' > _update_mod
+  echo "$(wc -l _update_add | sed 's/^\([0-9]*\).*/\1/') Files To Add"
+  echo "$(wc -l _update_mod | sed 's/^\([0-9]*\).*/\1/') Files To Modify"
+  echo "$(wc -l _update_del | sed 's/^\([0-9]*\).*/\1/') Files To Delete"
 
-	echo "$(wc -l _update_add | sed 's/^\([0-9]*\).*/\1/') Files To Add"
-	echo "$(wc -l _update_mod | sed 's/^\([0-9]*\).*/\1/') Files To Modify"
-	echo "$(wc -l _update_del | sed 's/^\([0-9]*\).*/\1/') Files To Delete"
+  # Copy
+  for j in $(cat _update_add | tr ' ' '@'); do
+    if [ -d "updateme/${j//@/ }" ]; then
+      mkdir "importing/${j//@/ }"
+    else
+      cp -f "updateme/${j//@/ }" "importing/${j//@/ }"
+    fi
+    cd importing
+    # We send cerr to null because it warns when we add existing stuff
+    svn add "${j//@/ }" 2> /dev/null
+    cd ..
+  done
 
-	# Copy
-	for j in $(cat _update_add | tr ' ' '@'); do
-		if [ -d "updateme/${j//@/ }" ]; then
-			mkdir "importing/${j//@/ }"
-		else
-			cp -f "updateme/${j//@/ }" "importing/${j//@/ }"
-		fi
-		cd importing
-		# We send cerr to null because it warns when we add existing stuff
-		svn add "${j//@/ }" 2> /dev/null
-		cd ..
-	done
+  # Modify
+  for j in $(cat _update_mod | tr ' ' '@'); do
+    if [ -f "updateme/${j//@/ }" ]; then
+      cp -f "updateme/${j//@/ }" "importing/${j//@/ }"
+    fi
+  done
 
-	# Modify
-	for j in $(cat _update_mod | tr ' ' '@'); do
-		if [ -f "updateme/${j//@/ }" ]; then
-			cp -f "updateme/${j//@/ }" "importing/${j//@/ }"
-		fi
-	done
+  # Delete
+  for j in $(cat _update_del | tr ' ' '@'); do
+    cd importing
+    svn rm "${j//@/ }"
+    cd ..
+  done
 
-	# Delete
-	for j in $(cat _update_del | tr ' ' '@'); do
-		cd importing
-		svn rm "${j//@/ }"
-		cd ..
-	done
-
-	echo "Committing"
-	cd importing
-	svn commit -F ../_log
-	cd ..
+  echo "Committing"
+  cd importing
+  username_param=""
+  if [ "x$username" != "x" ]; then
+	username_param="--username $username"  
+  fi;
+  svn commit --force-log -F ../_log $username_param
+  
+  cd ..
 
 done
 
