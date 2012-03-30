@@ -1,0 +1,48 @@
+################################################################################                                                                                                         
+#                                  LICENSE                                     #
+################################################################################                                                                                                         
+
+This program is free software; you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation; either version 2 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program; if not, write to the
+Free Software Foundation, Inc.,
+59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
+
+################################################################################
+#                                 ABOUT                                        #
+################################################################################
+
+Author: John Hobbs
+Home: http://www.velvetcache.org/
+
+This is a script to cross load subversion repositories (kind of) keeping history
+intact without access to svnadmin.  Import into a FRESH repository only, and
+be sure to do a comprehensive diff at the end.
+
+Also be sure to do this in an empty directory. Temp files get added and removed
+without sincere thought put into them.
+
+Log messages get eaten and re-inserted as shown below. Edit to taste.
+  $ svn log -r 1
+  ------------------------------------------------------------------------
+  r1 | jmhobbs | 2008-11-12 18:19:43 -0600 (Wed, 12 Nov 2008) | 7 lines
+
+  Imported from file:///srv/svn/scs using svncrossload
+
+    |r1 | jmhobbs | 2008-10-27 17:32:44 -0500 (Mon, 27 Oct 2008) | 2 lines
+    |
+    |Initial import.
+    |
+
+  ------------------------------------------------------------------------
+  $
+
