@@ -48,28 +48,106 @@
 #   ------------------------------------------------------------------------
 #   $
 
-if [ $# -lt 4 ]; then
-	echo "Usage: $0 <src repo URI> <dest repo URI> <initial revision> <final revision>"
-	exit 1;
+usage()
+{
+		echo "$0 -- cross load subversion repos, preserving history"
+		echo
+		echo " $0 [-s|--source-repo] SRC_URL    [-d|--dest-repo] DST_URI"
+		echo
+		echo "          Options:"
+		echo "                       --source-username  username"
+		echo "                       --dest-username  username"
+		echo "                       [-r|--rev-start] StartingRevision"
+		echo "                       [-R|--rev-end] EndingRevision"
+		echo
+		echo $*
+		exit 1
+}
+
+while [ "X$1" != "X" ]
+do
+	case $1 in
+			-s|--source-repo)
+					shift
+					SRC=$1
+					shift
+					;;
+
+			-d|--dest-repo)
+					shift
+					DST=$1
+					shift
+					;;
+
+			-r|--rev-start)
+					shift
+					REV_START=$1
+					shift
+					;;
+
+			-R|--rev-end)
+					shift
+					REV_END=$1
+					shift
+					;;
+
+			--source-username)
+					shift
+					SRC_USERNAME=$1
+					shift
+					;;
+
+			--dest-username)
+					shift
+					DST_USERNAME=$1
+					shift
+					;;
+
+			*)
+					usage "Invalid argument: \"$1\""
+					exit 1
+					;;
+	esac
+done
+
+
+if [ "X$SRC" = "X" ] ; then
+	usage "Missing source repo URI"
+fi
+if [ "X$DST" = "X" ] ; then
+	usage "Missing destination repo URI"
 fi
 
-SRC=$1
-DST=$2
-REV_START=$3
-REV_END=$4
+if [ "X$SRC_USERNAME" != "X" ] ; then
+	SRC="$SRC --username $SRC_USERNAME"
+fi
+if [ "X$DST_USERNAME" != "X" ] ; then
+	DST="$DST --username $DST_USERNAME"
+fi
 
+if [ "X$REV_START" = "X" ] ; then
+	# use the first revision as the end point
+	REV_START=$(svn log $SRC |grep "^r[0-9][0-9]*" | tail -1 |sed -e "s/^r//" -e "s/ .*//")
+fi
+
+if [ "X$REV_END" = "X" ] ; then
+	# use the last revision as the end point
+	REV_END=$(svn info $SRC | grep Revision | sed 's/^Revision: *\([0-9]*\)/\1/')
+fi
 echo "Checking out initial revisions"
 svn co $DST importing > /dev/null
 svn co -r $REV_START $SRC updateme > /dev/null
 
-echo "Getting most recent revision number"
-LATESTREVISION=$(svn info $SRC | grep Revision | sed 's/^Revision: *\([0-9]*\)/\1/')
-
-#for i in $(seq 1 $LATESTREVISION); do
+if [ ! -d $updateme ] ; then
+	mkdir $updateme 
+	if [ $? != 0 ] ; then
+		echo "Error making temp dir \"updateme\""
+		exit 1
+	fi
+fi
 
 for i in $(seq $REV_START $REV_END); do
   echo -e "\nCopying revision $i"
-  
   
   cd updateme
   svn update -r $i | tee ../_update
@@ -96,7 +174,7 @@ for i in $(seq $REV_START $REV_END); do
       cp -f "updateme/${j//@/ }" "importing/${j//@/ }"
     fi
     cd importing
-    # We send cerr to null because it warns when we add existing stuff
+    # We send stderr to null because it warns when we add existing stuff
     svn add "${j//@/ }" 2> /dev/null
     cd ..
   done
@@ -117,10 +195,14 @@ for i in $(seq $REV_START $REV_END); do
 
   echo "Committing"
   cd importing
-  username_param=""
-  if [ "x$username" != "x" ]; then
-	username_param="--username $username"  
-  fi;
+  if [ "X$DST_USERNAME" = "X" ] ; then
+  	username_param=""
+  	if [ "x$username" != "x" ]; then
+		username_param="--username $username"  
+  	fi
+  else
+	  username_param="--username $DST_USERNAME"
+  fi
   svn commit --force-log -F ../_log $username_param
   
   cd ..
